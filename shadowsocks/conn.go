@@ -65,6 +65,20 @@ func DialWithRawAddr(rawaddr []byte, server string, cipher *Cipher) (c *Conn, er
 	return
 }
 
+//
+func DialWithoutRawAddr(server string, cipher *Cipher) (c *Conn, err error) {
+	conn, err := net.Dial("tcp", server)
+	if err != nil {
+		return
+	}
+	c = NewConn(conn, cipher)
+	if _, err = c.Write([]byte{}); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return
+}
+
 // addr should be in the form of host:port
 func Dial(addr, server string, cipher *Cipher) (c *Conn, err error) {
 	ra, err := RawAddr(addr)

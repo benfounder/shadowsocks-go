@@ -1,14 +1,28 @@
 # shadowsocks-go
 
-Current version: 1.1.4 [![Build Status](https://travis-ci.org/shadowsocks/shadowsocks-go.png?branch=master)](https://travis-ci.org/shadowsocks/shadowsocks-go)
+This is a patch to shadowsocks-go, which can be used to setup a proxy inside intranet, then we can use normal shadowsocks client to access the intranet services through internet. The topological graph is like this.
 
-shadowsocks-go is a lightweight tunnel proxy which can help you get through firewalls. It is a port of [shadowsocks](https://github.com/clowwindy/shadowsocks).
+```
++--------------------+
+|     intranet       |
+|                    |       +-------------+      +-------------+
+|    +-------------+ |       | shadowsocks |      | shadowsocks |
+|    | shadowsocks +---------> relay       <------+ client      |
+|    | insider     | |       +-------------+      +-------------+
+|    +-------------+ |
+|                    |
++--------------------+
+```
 
-The protocol is compatible with the origin shadowsocks (if both have been upgraded to the latest version).
+We add two daemon programs, shadowsocks-relay and shadowsocks-insider.
 
-**Note `server_password` option syntax changed in 0.6.2, the client now connects to servers in the order specified in the config.**
+Shadowsocks-relay works like shadowsocks-server, it proxies socks connection from shadowsocks-client. But it relay data to shadowsocks-insider instead of directing data to target servers as shadowsocks-server. It listens on two ports, one for shadowsocks-client, the other for shadowsocks-insider. The port number for shadowsocks-insider is next to the one for shadowsocks-client. 
 
-**Please develop on the latest develop branch if you want to send pull request.**
+Shadowsocks-insider acts a combination of part features from shadowsocks-server and shadowsocks-client. It will proactively connect to shadowsocks-relay like shadowsocks-client conneting to shadowsocks-server. When shadowsocks-client sending sock data, shadowsocks-insider will receive the data from shadowsocks-relay through the connetion it proactively created, and then shadowsocks-insider will decode out the target server, forward data to the target server. At same time, shadowsocks-insider will initialize another connection to shadowsocks-relay, so that further request from shadowsocks-client can be processed.
+
+**With these components, you can access the services inside intranet at the outside. But you should be cautioned the security problem incurred by this setup.
+
+The protocol is completely compatible with the origin shadowsocks. So for shadowsocks-client, you can use any compatible shadowsocks-client.
 
 # Install
 
@@ -17,17 +31,17 @@ Compiled client binaries can be download [here](http://dl.chenyufei.info/shadows
 You can also install from source (assume you have go installed):
 
 ```
-# on server
-go get github.com/shadowsocks/shadowsocks-go/cmd/shadowsocks-server
-# on client
-go get github.com/shadowsocks/shadowsocks-go/cmd/shadowsocks-local
+# on relay
+go get github.com/shadowsocks/shadowsocks-go/cmd/shadowsocks-relay
+# on insider
+go get github.com/shadowsocks/shadowsocks-go/cmd/shadowsocks-insider
 ```
 
-It's recommended to disable cgo when compiling shadowsocks-go. This will prevent the go runtime from creating too many threads for dns lookup.
+It's recommended to disable cgo when compiling shadowsocks-xxx. This will prevent the go runtime from creating too many threads for dns lookup.
 
 # Usage
 
-Both the server and client program will look for `config.json` in the current directory. You can use `-c` option to specify another configuration file.
+Both the relay and insider program will look for `config.json` in the current directory. You can use `-c` option to specify another configuration file.
 
 Configuration file is in json format and has the same syntax with [shadowsocks-nodejs](https://github.com/clowwindy/shadowsocks-nodejs/). You can download the sample [`config.json`](https://github.com/shadowsocks/shadowsocks-go/blob/master/config.json), change the following values:
 
@@ -41,9 +55,11 @@ password        a password used to encrypt transfer
 timeout         server option, in seconds
 ```
 
-Run `shadowsocks-server` on your server. To run it in the background, run `shadowsocks-server > log &`.
+"server_port" specifies the port number for shadowsocks-client, the "server_port+1" will be the port number for shadowsocks-insider currently.
 
-On client, run `shadowsocks-local`. Change proxy settings of your browser to
+Run `shadowsocks-relay` on your server. To run it in the background, run `shadowsocks-server > log &`.
+
+On insider, run `shadowsocks-insider`. Change proxy settings of your browser to
 
 ```
 SOCKS5 127.0.0.1:local_port
@@ -60,10 +76,10 @@ AES is recommended for shadowsocks-go. [Intel AES Instruction Set](http://en.wik
 Command line options can override settings from configuration files. Use `-h` option to see all available options.
 
 ```
-shadowsocks-local -s server_address -p server_port -k password
+shadowsocks-insider -s server_address -p server_port -k password
     -m aes-128-cfb -c config.json
     -b local_address -l local_port
-shadowsocks-server -p server_port -k password
+shadowsocks-relay -p server_port -k password
     -m aes-128-cfb -c config.json
     -t timeout
 ```
